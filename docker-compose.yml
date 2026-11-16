@@ -1,0 +1,62 @@
+# Full stack: docker compose up --build   → http://localhost:8080
+# With Apache NiFi:  docker compose --profile nifi up --build
+x-secrets: &secrets
+  JWT_SECRET: ${JWT_SECRET:-change-me-please-a-long-random-string}
+  INTEGRATION_TOKEN: ${INTEGRATION_TOKEN:-change-me-integration-token}
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment: { POSTGRES_USER: tourwerk, POSTGRES_PASSWORD: tourwerk, POSTGRES_DB: tourwerk }
+    volumes: [pg-data:/var/lib/postgresql/data]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U tourwerk"], interval: 5s, retries: 20 }
+
+  mongo:
+    image: mongo:7
+    volumes: [mongo-data:/data/db]
+    healthcheck: { test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"], interval: 5s, retries: 20 }
+
+  mysql:
+    image: mysql:8.4
+    environment: { MYSQL_ROOT_PASSWORD: root, MYSQL_DATABASE: erp, MYSQL_USER: tourwerk, MYSQL_PASSWORD: tourwerk }
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./integration/mysql:/docker-entrypoint-initdb.d:ro
+    healthcheck: { test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-proot"], interval: 5s, retries: 30 }
+
+  api:
+    build: { context: ., target: api }
+    environment:
+      <<: *secrets
+      DATABASE_URL: postgresql://tourwerk:tourwerk@postgres:5432/tourwerk
+      MONGO_URL: mongodb://mongo:27017/tourwerk
+      MYSQL_URL: mysql://tourwerk:tourwerk@mysql:3306/erp
+    depends_on:
+      postgres: { condition: service_healthy }
+      mongo: { condition: service_healthy }
+      mysql: { condition: service_healthy }
+    restart: unless-stopped
+
+  web:
+    build: { context: ., target: web }
+    ports: ["8080:80"]
+    depends_on: [api]
+    restart: unless-stopped
+
+  nifi:
+    profiles: [nifi]
+    build: ./integration/nifi
+    ports: ["8443:8443"]
+    environment:
+      SINGLE_USER_CREDENTIALS_USERNAME: admin
+      SINGLE_USER_CREDENTIALS_PASSWORD: ${NIFI_PASSWORD:-tourwerk-nifi-admin}
+      NIFI_WEB_PROXY_HOST: localhost:8443
+      TOURWERK_API_URL: http://api:4600
+    volumes: [nifi-inbox:/data/webshop]
+    depends_on: [api]
+
+volumes:
+  pg-data:
+  mongo-data:
+  mysql-data:
+  nifi-inbox:

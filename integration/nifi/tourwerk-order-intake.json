@@ -1,0 +1,462 @@
+{
+  "flowContents": {
+    "identifier": "8477a066-34ea-50ae-a8ac-ad2314fc76da",
+    "name": "Tourwerk order intake",
+    "comments": "Webshop CSV exports -> Tourwerk REST API (idempotent by externalRef); periodic ERP export trigger.",
+    "processors": [
+      {
+        "identifier": "5c76b003-3978-5e7a-8f80-b93aca883f32",
+        "name": "List webshop exports",
+        "type": "org.apache.nifi.processors.standard.ListFile",
+        "bundle": {
+          "group": "org.apache.nifi",
+          "artifact": "nifi-standard-nar",
+          "version": "2.0.0"
+        },
+        "position": {
+          "x": 0,
+          "y": 0
+        },
+        "properties": {
+          "Input Directory": "/data/webshop/incoming",
+          "File Filter": "webshop-orders-.*\\.csv",
+          "Minimum File Age": "10 sec"
+        },
+        "schedulingPeriod": "30 sec",
+        "schedulingStrategy": "TIMER_DRIVEN",
+        "autoTerminatedRelationships": [],
+        "componentType": "PROCESSOR"
+      },
+      {
+        "identifier": "d3801173-293f-54e2-914a-59e74ae9ea72",
+        "name": "Fetch CSV",
+        "type": "org.apache.nifi.processors.standard.FetchFile",
+        "bundle": {
+          "group": "org.apache.nifi",
+          "artifact": "nifi-standard-nar",
+          "version": "2.0.0"
+        },
+        "position": {
+          "x": 0,
+          "y": 200
+        },
+        "properties": {
+          "File to Fetch": "${absolute.path}/${filename}",
+          "Completion Strategy": "Move File",
+          "Move Destination Directory": "/data/webshop/processed"
+        },
+        "schedulingPeriod": "0 sec",
+        "schedulingStrategy": "TIMER_DRIVEN",
+        "autoTerminatedRelationships": [
+          "not.found",
+          "permission.denied"
+        ],
+        "componentType": "PROCESSOR"
+      },
+      {
+        "identifier": "17011fd6-4ace-57c3-a26e-8fc1a80179a3",
+        "name": "CSV to JSON",
+        "type": "org.apache.nifi.processors.standard.ConvertRecord",
+        "bundle": {
+          "group": "org.apache.nifi",
+          "artifact": "nifi-standard-nar",
+          "version": "2.0.0"
+        },
+        "position": {
+          "x": 0,
+          "y": 400
+        },
+        "properties": {
+          "Record Reader": "282aaaca-2e5a-59cf-922f-e2ee18bffdbc",
+          "Record Writer": "ed3fa77d-e6e8-52db-8d25-8ff9a57179b0"
+        },
+        "schedulingPeriod": "0 sec",
+        "schedulingStrategy": "TIMER_DRIVEN",
+        "autoTerminatedRelationships": [],
+        "componentType": "PROCESSOR"
+      },
+      {
+        "identifier": "96bce3c5-f1ef-5f62-b80a-950ab32af50c",
+        "name": "Wrap as batch",
+        "type": "org.apache.nifi.processors.standard.JoltTransformJSON",
+        "bundle": {
+          "group": "org.apache.nifi",
+          "artifact": "nifi-standard-nar",
+          "version": "2.0.0"
+        },
+        "position": {
+          "x": 0,
+          "y": 600
+        },
+        "properties": {
+          "Jolt Transformation DSL": "Shift",
+          "Jolt Specification": "{\"*\": \"orders[]\"}"
+        },
+        "schedulingPeriod": "0 sec",
+        "schedulingStrategy": "TIMER_DRIVEN",
+        "autoTerminatedRelationships": [],
+        "componentType": "PROCESSOR"
+      },
+      {
+        "identifier": "aa9deaf2-5095-55b7-b9d0-f8f4a5bc3b9c",
+        "name": "POST to Tourwerk",
+        "type": "org.apache.nifi.processors.standard.InvokeHTTP",
+        "bundle": {
+          "group": "org.apache.nifi",
+          "artifact": "nifi-standard-nar",
+          "version": "2.0.0"
+        },
+        "position": {
+          "x": 0,
+          "y": 800
+        },
+        "properties": {
+          "HTTP Method": "POST",
+          "HTTP URL": "${TOURWERK_API_URL:replaceNull('http://api:4600')}/api/integration/orders",
+          "Request Content-Type": "application/json",
+          "x-integration-token": "#{integration_token}",
+          "x-source": "webshop",
+          "Connection Timeout": "10 secs",
+          "Socket Read Timeout": "60 secs"
+        },
+        "schedulingPeriod": "0 sec",
+        "schedulingStrategy": "TIMER_DRIVEN",
+        "autoTerminatedRelationships": [
+          "Original"
+        ],
+        "componentType": "PROCESSOR"
+      },
+      {
+        "identifier": "71ad4c8f-7da3-5274-b578-4ba73b10f17b",
+        "name": "Archive import report",
+        "type": "org.apache.nifi.processors.standard.PutFile",
+        "bundle": {
+          "group": "org.apache.nifi",
+          "artifact": "nifi-standard-nar",
+          "version": "2.0.0"
+        },
+        "position": {
+          "x": -400,
+          "y": 1000
+        },
+        "properties": {
+          "Directory": "/data/webshop/reports",
+          "Conflict Resolution Strategy": "replace"
+        },
+        "schedulingPeriod": "0 sec",
+        "schedulingStrategy": "TIMER_DRIVEN",
+        "autoTerminatedRelationships": [
+          "success",
+          "failure"
+        ],
+        "componentType": "PROCESSOR"
+      },
+      {
+        "identifier": "331ee155-cffe-5345-91a5-d3529eba3cd0",
+        "name": "Retry later",
+        "type": "org.apache.nifi.processors.standard.PutFile",
+        "bundle": {
+          "group": "org.apache.nifi",
+          "artifact": "nifi-standard-nar",
+          "version": "2.0.0"
+        },
+        "position": {
+          "x": 400,
+          "y": 1000
+        },
+        "properties": {
+          "Directory": "/data/webshop/failed",
+          "Conflict Resolution Strategy": "replace"
+        },
+        "schedulingPeriod": "0 sec",
+        "schedulingStrategy": "TIMER_DRIVEN",
+        "autoTerminatedRelationships": [
+          "success",
+          "failure"
+        ],
+        "componentType": "PROCESSOR"
+      },
+      {
+        "identifier": "a37c04b6-4176-5831-95bc-e1535539e0f0",
+        "name": "Every 5 minutes",
+        "type": "org.apache.nifi.processors.standard.GenerateFlowFile",
+        "bundle": {
+          "group": "org.apache.nifi",
+          "artifact": "nifi-standard-nar",
+          "version": "2.0.0"
+        },
+        "position": {
+          "x": 800,
+          "y": 0
+        },
+        "properties": {
+          "Custom Text": "{}"
+        },
+        "schedulingPeriod": "5 min",
+        "schedulingStrategy": "TIMER_DRIVEN",
+        "autoTerminatedRelationships": [],
+        "componentType": "PROCESSOR"
+      },
+      {
+        "identifier": "532c0eab-6a41-5924-9957-ef62181359e7",
+        "name": "Trigger ERP export",
+        "type": "org.apache.nifi.processors.standard.InvokeHTTP",
+        "bundle": {
+          "group": "org.apache.nifi",
+          "artifact": "nifi-standard-nar",
+          "version": "2.0.0"
+        },
+        "position": {
+          "x": 800,
+          "y": 200
+        },
+        "properties": {
+          "HTTP Method": "POST",
+          "HTTP URL": "${TOURWERK_API_URL:replaceNull('http://api:4600')}/api/integration/erp/export",
+          "Request Content-Type": "application/json",
+          "x-integration-token": "#{integration_token}"
+        },
+        "schedulingPeriod": "0 sec",
+        "schedulingStrategy": "TIMER_DRIVEN",
+        "autoTerminatedRelationships": [
+          "Original",
+          "Response",
+          "Retry",
+          "No Retry",
+          "Failure"
+        ],
+        "componentType": "PROCESSOR"
+      }
+    ],
+    "connections": [
+      {
+        "identifier": "4a497dcb-8e0b-5f38-b63b-d9fb27be146d",
+        "source": {
+          "id": "5c76b003-3978-5e7a-8f80-b93aca883f32",
+          "type": "PROCESSOR"
+        },
+        "destination": {
+          "id": "d3801173-293f-54e2-914a-59e74ae9ea72",
+          "type": "PROCESSOR"
+        },
+        "selectedRelationships": [
+          "success"
+        ],
+        "backPressureObjectThreshold": 10000,
+        "backPressureDataSizeThreshold": "1 GB",
+        "componentType": "CONNECTION"
+      },
+      {
+        "identifier": "c3421875-4262-5ab9-9b96-18f1d339d6bf",
+        "source": {
+          "id": "d3801173-293f-54e2-914a-59e74ae9ea72",
+          "type": "PROCESSOR"
+        },
+        "destination": {
+          "id": "17011fd6-4ace-57c3-a26e-8fc1a80179a3",
+          "type": "PROCESSOR"
+        },
+        "selectedRelationships": [
+          "success"
+        ],
+        "backPressureObjectThreshold": 10000,
+        "backPressureDataSizeThreshold": "1 GB",
+        "componentType": "CONNECTION"
+      },
+      {
+        "identifier": "3a8bade7-c2d3-5dc6-bd0d-67874a3a3b5e",
+        "source": {
+          "id": "d3801173-293f-54e2-914a-59e74ae9ea72",
+          "type": "PROCESSOR"
+        },
+        "destination": {
+          "id": "331ee155-cffe-5345-91a5-d3529eba3cd0",
+          "type": "PROCESSOR"
+        },
+        "selectedRelationships": [
+          "failure"
+        ],
+        "backPressureObjectThreshold": 10000,
+        "backPressureDataSizeThreshold": "1 GB",
+        "componentType": "CONNECTION"
+      },
+      {
+        "identifier": "1ed6b89d-7a28-5c9d-983e-4605dbac4ced",
+        "source": {
+          "id": "17011fd6-4ace-57c3-a26e-8fc1a80179a3",
+          "type": "PROCESSOR"
+        },
+        "destination": {
+          "id": "96bce3c5-f1ef-5f62-b80a-950ab32af50c",
+          "type": "PROCESSOR"
+        },
+        "selectedRelationships": [
+          "success"
+        ],
+        "backPressureObjectThreshold": 10000,
+        "backPressureDataSizeThreshold": "1 GB",
+        "componentType": "CONNECTION"
+      },
+      {
+        "identifier": "078841df-6a9c-5075-89a9-934b930f226f",
+        "source": {
+          "id": "17011fd6-4ace-57c3-a26e-8fc1a80179a3",
+          "type": "PROCESSOR"
+        },
+        "destination": {
+          "id": "331ee155-cffe-5345-91a5-d3529eba3cd0",
+          "type": "PROCESSOR"
+        },
+        "selectedRelationships": [
+          "failure"
+        ],
+        "backPressureObjectThreshold": 10000,
+        "backPressureDataSizeThreshold": "1 GB",
+        "componentType": "CONNECTION"
+      },
+      {
+        "identifier": "957ea237-199c-5a80-853c-01aba791e129",
+        "source": {
+          "id": "96bce3c5-f1ef-5f62-b80a-950ab32af50c",
+          "type": "PROCESSOR"
+        },
+        "destination": {
+          "id": "aa9deaf2-5095-55b7-b9d0-f8f4a5bc3b9c",
+          "type": "PROCESSOR"
+        },
+        "selectedRelationships": [
+          "success"
+        ],
+        "backPressureObjectThreshold": 10000,
+        "backPressureDataSizeThreshold": "1 GB",
+        "componentType": "CONNECTION"
+      },
+      {
+        "identifier": "84d25d35-8dcb-5770-b2fe-d7f4c1baeb88",
+        "source": {
+          "id": "96bce3c5-f1ef-5f62-b80a-950ab32af50c",
+          "type": "PROCESSOR"
+        },
+        "destination": {
+          "id": "331ee155-cffe-5345-91a5-d3529eba3cd0",
+          "type": "PROCESSOR"
+        },
+        "selectedRelationships": [
+          "failure"
+        ],
+        "backPressureObjectThreshold": 10000,
+        "backPressureDataSizeThreshold": "1 GB",
+        "componentType": "CONNECTION"
+      },
+      {
+        "identifier": "f36a0bb1-4850-5aba-9a42-28727d2479cc",
+        "source": {
+          "id": "aa9deaf2-5095-55b7-b9d0-f8f4a5bc3b9c",
+          "type": "PROCESSOR"
+        },
+        "destination": {
+          "id": "71ad4c8f-7da3-5274-b578-4ba73b10f17b",
+          "type": "PROCESSOR"
+        },
+        "selectedRelationships": [
+          "Response"
+        ],
+        "backPressureObjectThreshold": 10000,
+        "backPressureDataSizeThreshold": "1 GB",
+        "componentType": "CONNECTION"
+      },
+      {
+        "identifier": "02095b29-07ef-5f11-ae92-a44c4495aa49",
+        "source": {
+          "id": "aa9deaf2-5095-55b7-b9d0-f8f4a5bc3b9c",
+          "type": "PROCESSOR"
+        },
+        "destination": {
+          "id": "331ee155-cffe-5345-91a5-d3529eba3cd0",
+          "type": "PROCESSOR"
+        },
+        "selectedRelationships": [
+          "Retry",
+          "No Retry",
+          "Failure"
+        ],
+        "backPressureObjectThreshold": 10000,
+        "backPressureDataSizeThreshold": "1 GB",
+        "componentType": "CONNECTION"
+      },
+      {
+        "identifier": "42ecd78a-47ad-5353-ae85-763e71132679",
+        "source": {
+          "id": "a37c04b6-4176-5831-95bc-e1535539e0f0",
+          "type": "PROCESSOR"
+        },
+        "destination": {
+          "id": "532c0eab-6a41-5924-9957-ef62181359e7",
+          "type": "PROCESSOR"
+        },
+        "selectedRelationships": [
+          "success"
+        ],
+        "backPressureObjectThreshold": 10000,
+        "backPressureDataSizeThreshold": "1 GB",
+        "componentType": "CONNECTION"
+      }
+    ],
+    "controllerServices": [
+      {
+        "identifier": "282aaaca-2e5a-59cf-922f-e2ee18bffdbc",
+        "name": "Webshop CSV reader",
+        "type": "org.apache.nifi.csv.CSVReader",
+        "bundle": {
+          "group": "org.apache.nifi",
+          "artifact": "nifi-record-serialization-services-nar",
+          "version": "2.0.0"
+        },
+        "properties": {
+          "schema-access-strategy": "csv-header-derived",
+          "Treat First Line as Header": "true",
+          "Trim Fields": "true",
+          "Character Set": "UTF-8"
+        },
+        "componentType": "CONTROLLER_SERVICE"
+      },
+      {
+        "identifier": "ed3fa77d-e6e8-52db-8d25-8ff9a57179b0",
+        "name": "JSON writer",
+        "type": "org.apache.nifi.json.JsonRecordSetWriter",
+        "bundle": {
+          "group": "org.apache.nifi",
+          "artifact": "nifi-record-serialization-services-nar",
+          "version": "2.0.0"
+        },
+        "properties": {
+          "Schema Write Strategy": "no-schema",
+          "Output Grouping": "output-array",
+          "Pretty Print JSON": "false"
+        },
+        "componentType": "CONTROLLER_SERVICE"
+      }
+    ],
+    "parameterContextName": "Tourwerk",
+    "processGroups": [],
+    "inputPorts": [],
+    "outputPorts": [],
+    "funnels": [],
+    "labels": [],
+    "remoteProcessGroups": [],
+    "componentType": "PROCESS_GROUP"
+  },
+  "parameterContexts": {
+    "Tourwerk": {
+      "name": "Tourwerk",
+      "parameters": [
+        {
+          "name": "integration_token",
+          "sensitive": true,
+          "description": "Same value as INTEGRATION_TOKEN of the API"
+        }
+      ]
+    }
+  },
+  "flowEncodingVersion": "1.0"
+}

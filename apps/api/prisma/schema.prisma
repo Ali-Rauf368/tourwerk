@@ -1,0 +1,168 @@
+// Tourwerk – relational core: orders, fleet, tours and stops.
+// High-volume GPS telemetry lives in MongoDB; delivered orders are exported to the legacy ERP (MySQL).
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  ADMIN
+  DISPATCHER
+  DRIVER
+}
+
+enum OrderStatus {
+  NEW
+  PLANNED
+  OUT_FOR_DELIVERY
+  DELIVERED
+  FAILED
+  CANCELLED
+}
+
+enum OrderSource {
+  MANUAL
+  WEBSHOP
+  ERP
+}
+
+enum TourStatus {
+  PLANNED
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum StopStatus {
+  PENDING
+  ARRIVED
+  DELIVERED
+  FAILED
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  name         String
+  role         Role
+  passwordHash String
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  driverOf     Vehicle?
+}
+
+model Depot {
+  id         String    @id @default(uuid())
+  name       String
+  address    String
+  lat        Float
+  lng        Float
+  shiftStart Int       @default(420) // minutes after midnight
+  shiftEnd   Int       @default(1140)
+  vehicles   Vehicle[]
+  orders     Order[]
+  tours      Tour[]
+}
+
+model Vehicle {
+  id         String  @id @default(uuid())
+  plate      String  @unique
+  label      String
+  capacityKg Float
+  electric   Boolean @default(false)
+  active     Boolean @default(true)
+  depotId    String
+  depot      Depot   @relation(fields: [depotId], references: [id])
+  driverId   String? @unique
+  driver     User?   @relation(fields: [driverId], references: [id])
+  tours      Tour[]
+}
+
+model Order {
+  id          String      @id @default(uuid())
+  /// Human-readable number shown to customers, e.g. TW-2026-00042.
+  number      String      @unique
+  /// Idempotency key for integrations (webshop order id, ERP document number).
+  externalRef String?     @unique
+  source      OrderSource @default(MANUAL)
+  status      OrderStatus @default(NEW)
+  customer    String
+  phone       String?
+  street      String
+  postcode    String
+  city        String      @default("Hamburg")
+  lat         Float
+  lng         Float
+  weightKg    Float
+  parcels     Int         @default(1)
+  serviceMin  Int         @default(4)
+  windowStart Int // minutes after midnight
+  windowEnd   Int
+  deliveryDay DateTime    @db.Date
+  note        String?
+  failReason  String?
+  deliveredAt DateTime?
+  exportedAt  DateTime? // pushed to the ERP
+  createdAt   DateTime    @default(now())
+  depotId     String
+  depot       Depot       @relation(fields: [depotId], references: [id])
+  stop        Stop?
+
+  @@index([deliveryDay, status])
+  @@index([status, exportedAt])
+}
+
+model Tour {
+  id              String     @id @default(uuid())
+  day             DateTime   @db.Date
+  status          TourStatus @default(PLANNED)
+  plannedKm       Float
+  plannedReturn   Int // minutes after midnight
+  loadKg          Float
+  drivenKm        Float?
+  startedAt       DateTime?
+  completedAt     DateTime?
+  optimizerEngine String
+  createdAt       DateTime   @default(now())
+  depotId         String
+  depot           Depot      @relation(fields: [depotId], references: [id])
+  vehicleId       String
+  vehicle         Vehicle    @relation(fields: [vehicleId], references: [id])
+  stops           Stop[]
+
+  @@unique([vehicleId, day])
+  @@index([day, status])
+}
+
+model Stop {
+  id          String     @id @default(uuid())
+  seq         Int
+  etaMin      Int // planned service start, minutes after midnight
+  status      StopStatus @default(PENDING)
+  arrivedAt   DateTime?
+  completedAt DateTime?
+  /// Service-clock minute of delivery (minutes after midnight). Compared with the order's window for on-time KPIs.
+  completedMin Int?
+  tourId      String
+  tour        Tour       @relation(fields: [tourId], references: [id], onDelete: Cascade)
+  orderId     String     @unique
+  order       Order      @relation(fields: [orderId], references: [id])
+
+  @@unique([tourId, seq])
+}
+
+model AuditEvent {
+  id        String   @id @default(uuid())
+  at        DateTime @default(now())
+  actor     String
+  action    String
+  subject   String
+  detail    Json?
+
+  @@index([at])
+}

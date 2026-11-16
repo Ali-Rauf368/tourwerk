@@ -1,0 +1,9 @@
+node_modules
+dist
+native/build
+apps/api/src/generated
+.env
+coverage
+test-results
+playwright-report
+.local

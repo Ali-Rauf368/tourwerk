@@ -1,0 +1,19 @@
+{
+  "name": "tourwerk",
+  "private": true,
+  "description": "Tourwerk – last-mile delivery dispatch, route optimization and live fleet tracking",
+  "workspaces": ["apps/api", "apps/web", "e2e"],
+  "engines": { "node": ">=24" },
+  "scripts": {
+    "native": "make -s -C native",
+    "services": "bash scripts/dev-services.sh start",
+    "services:stop": "bash scripts/dev-services.sh stop",
+    "dev": "npm run native && npm run services && npm -w apps/api run db:deploy && concurrently -k -n api,web -c blue,magenta \"npm -w apps/api run dev\" \"npm -w apps/web run dev\"",
+    "build": "npm run native && npm -w apps/api run build && npm -w apps/web run build",
+    "typecheck": "npm -w apps/api run typecheck && npm -w apps/web run typecheck",
+    "test": "make -s -C native test && npm run services && npm -w apps/api test && npm -w apps/web test",
+    "e2e": "npm run native && npm run services && npm -w e2e test",
+    "reset-db": "bash scripts/reset-db.sh"
+  },
+  "devDependencies": { "concurrently": "^10.0.7" }
+}

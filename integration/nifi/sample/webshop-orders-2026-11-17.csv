@@ -1,0 +1,7 @@
+externalRef,customer,phone,street,postcode,weightKg,parcels,windowStart,windowEnd,deliveryDay,note
+SHOP-20261117-901,Bäckerei Körnerglück,040 3344551,Osterstraße 88,20259,14.5,2,07:30,10:00,2026-11-17,Lieferung über Hof
+SHOP-20261117-902,Mia Lange,,Mühlenkamp 12,22303,3.2,1,17:00,20:00,2026-11-17,
+SHOP-20261117-903,Optik Brandt,040 2219034,Schulterblatt 61,20357,6.0,1,10:00,14:00,2026-11-17,
+SHOP-20261117-904,Weinkontor Jessen,040 8890211,Bahrenfelder Straße 140,22765,48.0,4,09:00,12:00,2026-11-17,Schwer – Sackkarre
+SHOP-20261117-905,Noah Krause,,Kieler Straße 200,22525,2.1,1,08:00,18:00,2026-11-17,
+SHOP-20261117-906,Unbekannt GmbH,,Marienplatz 1,80331,5.0,1,08:00,18:00,2026-11-17,outside service area (rejected by the API)
